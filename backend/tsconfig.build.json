@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  // The build ships the server only. `tsconfig.json` additionally covers the
+  // seed and the tests so the editor and `npm run typecheck` see everything.
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "tests", "prisma"]
+}

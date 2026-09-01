@@ -1,0 +1,74 @@
+# Local development stack: Postgres, Redis, and the API.
+#
+# The Flutter app runs on the host (or a simulator) and talks to the API on
+# localhost:4000 — Flutter is deliberately not containerised, because building
+# for a device needs the host toolchain anyway.
+#
+#   docker compose up -d            # everything
+#   docker compose up -d postgres redis   # data only, run the API with npm run dev
+
+name: companion
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: companion-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: companion
+      POSTGRES_PASSWORD: companion
+      POSTGRES_DB: companion
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U companion -d companion"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: companion-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: companion-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      PORT: 4000
+      HOST: 0.0.0.0
+      # Inside the compose network the database host is the service name.
+      DATABASE_URL: postgresql://companion:companion@postgres:5432/companion?schema=public
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:-local-development-secret-change-me-please}
+      CORS_ORIGIN: "*"
+      LOG_LEVEL: info
+    ports:
+      - "4000:4000"
+    # Apply migrations before serving, so a fresh volume just works.
+    command: sh -c "npx prisma migrate deploy && node dist/server.js"
+
+volumes:
+  postgres-data:
+  redis-data:

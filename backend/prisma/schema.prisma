@@ -1,0 +1,390 @@
+// Companion — data model
+// A modular monolith: one schema, clear aggregates.
+//   identity   : User, RefreshToken
+//   presence   : Profile, Interest, ProfileInterest
+//   intent     : Activity, ActivityParticipant
+//   connection : Invitation, Conversation, ConversationParticipant, Message
+//   trust      : Block, Report
+//   awareness  : Notification
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------- enums
+
+enum Gender {
+  MALE
+  FEMALE
+  NON_BINARY
+  OTHER
+}
+
+enum GenderPreference {
+  ANYONE
+  MALE
+  FEMALE
+}
+
+/// The twelve first-class things people do together.
+enum ActivityCategory {
+  MOVIE
+  DINNER
+  COFFEE
+  SHOPPING
+  WALK
+  EVENT
+  TRAVEL
+  SPORTS
+  CONCERT
+  STUDY
+  GAMING
+  OTHER
+}
+
+/// Coarse-grained availability — deliberately fuzzy so it stays true for a while.
+enum AvailabilitySlot {
+  TONIGHT
+  TOMORROW
+  THIS_WEEK
+  WEEKEND
+  FLEXIBLE
+}
+
+enum ActivityStatus {
+  OPEN
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  CANCELLED
+  EXPIRED
+}
+
+enum ParticipantRole {
+  HOST
+  GUEST
+}
+
+enum VerificationStatus {
+  UNVERIFIED
+  PENDING
+  VERIFIED
+}
+
+enum MessageType {
+  TEXT
+  SYSTEM
+}
+
+enum NotificationType {
+  INVITATION_RECEIVED
+  INVITATION_ACCEPTED
+  INVITATION_DECLINED
+  MESSAGE_RECEIVED
+  ACTIVITY_REMINDER
+  SYSTEM
+}
+
+enum ReportStatus {
+  OPEN
+  REVIEWING
+  RESOLVED
+  DISMISSED
+}
+
+// ---------------------------------------------------------------- identity
+
+model User {
+  id           String   @id @default(cuid())
+  email        String?  @unique
+  phone        String?  @unique
+  passwordHash String
+  isActive     Boolean  @default(true)
+  lastActiveAt DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  profile Profile?
+
+  hostedActivities    Activity[]             @relation("ActivityHost")
+  participations      ActivityParticipant[]
+  sentInvitations     Invitation[]           @relation("InvitationSender")
+  receivedInvitations Invitation[]           @relation("InvitationRecipient")
+  conversations       ConversationParticipant[]
+  messages            Message[]
+  notifications       Notification[]
+  refreshTokens       RefreshToken[]
+  blocksMade          Block[]                @relation("Blocker")
+  blocksReceived      Block[]                @relation("Blocked")
+  reportsMade         Report[]               @relation("Reporter")
+  reportsReceived     Report[]               @relation("Reported")
+
+  @@index([lastActiveAt])
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@map("refresh_tokens")
+}
+
+// ---------------------------------------------------------------- presence
+
+model Profile {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  displayName String
+  birthDate   DateTime
+  gender      Gender
+  bio         String   @default("")
+  occupation  String?
+  city        String
+  area        String?
+  latitude    Float
+  longitude   Float
+  avatarUrl   String?
+  photos      String[] @default([])
+
+  preferredActivities ActivityCategory[]  @default([])
+  availability        AvailabilitySlot[]  @default([])
+
+  verification VerificationStatus @default(UNVERIFIED)
+  ratingAvg    Float              @default(0)
+  ratingCount  Int                @default(0)
+  isComplete   Boolean            @default(false)
+
+  /// Discovery opt-out — the profile stays, it simply stops surfacing.
+  isDiscoverable Boolean @default(true)
+  showDistance   Boolean @default(true)
+  showAge        Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  interests ProfileInterest[]
+
+  @@index([city, isDiscoverable])
+  @@index([gender])
+  @@index([birthDate])
+  @@map("profiles")
+}
+
+model Interest {
+  id    String @id @default(cuid())
+  slug  String @unique
+  label String
+  emoji String @default("")
+
+  profiles ProfileInterest[]
+
+  @@map("interests")
+}
+
+model ProfileInterest {
+  profileId  String
+  interestId String
+
+  profile  Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  interest Interest @relation(fields: [interestId], references: [id], onDelete: Cascade)
+
+  @@id([profileId, interestId])
+  @@index([interestId])
+  @@map("profile_interests")
+}
+
+// ---------------------------------------------------------------- intent
+
+model Activity {
+  id           String           @id @default(cuid())
+  hostId       String
+  category     ActivityCategory
+  title        String
+  description  String           @default("")
+  startsAt     DateTime
+  endsAt       DateTime?
+  locationName String
+  area         String?
+  city         String
+  latitude     Float
+  longitude    Float
+  lookingFor   GenderPreference @default(ANYONE)
+  minAge       Int              @default(18)
+  maxAge       Int              @default(99)
+  capacity     Int              @default(1)
+  status       ActivityStatus   @default(OPEN)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  host          User                  @relation("ActivityHost", fields: [hostId], references: [id], onDelete: Cascade)
+  participants  ActivityParticipant[]
+  invitations   Invitation[]
+  conversations Conversation[]
+
+  @@index([status, startsAt])
+  @@index([category, startsAt])
+  @@index([city, status, startsAt])
+  @@index([hostId, createdAt])
+  @@map("activities")
+}
+
+model ActivityParticipant {
+  id         String          @id @default(cuid())
+  activityId String
+  userId     String
+  role       ParticipantRole @default(GUEST)
+  joinedAt   DateTime        @default(now())
+
+  activity Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([activityId, userId])
+  @@index([userId])
+  @@map("activity_participants")
+}
+
+// ---------------------------------------------------------------- connection
+
+model Invitation {
+  id          String            @id @default(cuid())
+  senderId    String
+  recipientId String
+  /// Either an invitation *to* a posted activity, or a free-form proposal.
+  activityId  String?
+  category    ActivityCategory?
+  proposedAt  DateTime?
+  locationName String?
+  message     String            @default("")
+  status      InvitationStatus  @default(PENDING)
+  respondedAt DateTime?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  sender       User          @relation("InvitationSender", fields: [senderId], references: [id], onDelete: Cascade)
+  recipient    User          @relation("InvitationRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  activity     Activity?     @relation(fields: [activityId], references: [id], onDelete: SetNull)
+  conversation Conversation?
+
+  @@index([recipientId, status, createdAt])
+  @@index([senderId, status, createdAt])
+  @@index([activityId])
+  @@map("invitations")
+}
+
+model Conversation {
+  id                 String    @id @default(cuid())
+  invitationId       String?   @unique
+  activityId         String?
+  lastMessageAt      DateTime  @default(now())
+  lastMessagePreview String    @default("")
+  createdAt          DateTime  @default(now())
+
+  invitation   Invitation?               @relation(fields: [invitationId], references: [id], onDelete: SetNull)
+  activity     Activity?                 @relation(fields: [activityId], references: [id], onDelete: SetNull)
+  participants ConversationParticipant[]
+  messages     Message[]
+
+  @@index([lastMessageAt])
+  @@map("conversations")
+}
+
+model ConversationParticipant {
+  conversationId String
+  userId         String
+  lastReadAt     DateTime @default(now())
+  joinedAt       DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([conversationId, userId])
+  @@index([userId])
+  @@map("conversation_participants")
+}
+
+model Message {
+  id             String      @id @default(cuid())
+  conversationId String
+  senderId       String
+  body           String
+  type           MessageType @default(TEXT)
+  readAt         DateTime?
+  createdAt      DateTime    @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@map("messages")
+}
+
+// ---------------------------------------------------------------- awareness
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType
+  title     String
+  body      String           @default("")
+  data      Json?
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt])
+  @@map("notifications")
+}
+
+// ---------------------------------------------------------------- trust
+
+model Block {
+  id        String   @id @default(cuid())
+  blockerId String
+  blockedId String
+  reason    String?
+  createdAt DateTime @default(now())
+
+  blocker User @relation("Blocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked User @relation("Blocked", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerId, blockedId])
+  @@index([blockedId])
+  @@map("blocks")
+}
+
+model Report {
+  id          String       @id @default(cuid())
+  reporterId  String
+  reportedId  String
+  reason      String
+  details     String       @default("")
+  status      ReportStatus @default(OPEN)
+  createdAt   DateTime     @default(now())
+
+  reporter User @relation("Reporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  reported User @relation("Reported", fields: [reportedId], references: [id], onDelete: Cascade)
+
+  @@index([reportedId, status])
+  @@map("reports")
+}
