@@ -18,6 +18,7 @@ import { conversationRoutes } from './modules/conversations/conversations.routes
 import { notificationRoutes } from './modules/notifications/notifications.routes';
 import { safetyRoutes } from './modules/safety/safety.routes';
 import { realtimeRoutes } from './modules/realtime/realtime.routes';
+import { mediaRoutes } from './modules/media/media.routes';
 
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({
@@ -81,6 +82,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     { prefix: '/api' },
   );
 
+  await app.register(mediaRoutes, { prefix: '/media' });
   await app.register(realtimeRoutes);
 
   return app;

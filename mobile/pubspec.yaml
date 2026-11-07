@@ -27,6 +27,7 @@ dependencies:
   # Media + type
   cached_network_image: ^3.3.1
   google_fonts: ^6.2.1
+  image_picker: ^1.1.2
 
   # Formatting
   intl: ^0.19.0

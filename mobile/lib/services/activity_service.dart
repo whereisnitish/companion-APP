@@ -11,7 +11,7 @@ class ActivityDraft {
     this.startsAt,
     this.locationName = '',
     this.area,
-    this.city = 'Bengaluru',
+    this.city = 'Chandigarh',
     this.latitude,
     this.longitude,
     this.lookingFor = GenderPreference.anyone,

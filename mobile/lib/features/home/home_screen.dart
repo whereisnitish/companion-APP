@@ -120,7 +120,7 @@ class _HomeContent extends ConsumerWidget {
                   ),
                 ),
                 SizedBox(
-                  height: 112,
+                  height: 124,
                   child: ListView.separated(
                     scrollDirection: Axis.horizontal,
                     padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenX),
@@ -611,13 +611,13 @@ class _HomeSkeleton extends StatelessWidget {
           const SkeletonBox(width: 180, height: 20),
           const SizedBox(height: AppSpacing.lg),
           SizedBox(
-            height: 112,
+            height: 124,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               itemCount: 5,
               separatorBuilder: (_, __) => const SizedBox(width: AppSpacing.md),
               itemBuilder: (_, __) =>
-                  const SkeletonBox(width: 96, height: 112, radius: AppRadii.lg),
+                  const SkeletonBox(width: 96, height: 124, radius: AppRadii.lg),
             ),
           ),
           const SizedBox(height: AppSpacing.xxxl),

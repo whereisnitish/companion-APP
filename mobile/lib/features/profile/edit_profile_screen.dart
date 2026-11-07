@@ -12,13 +12,11 @@ import '../../providers/feed_providers.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../../theme/app_typography.dart';
-import '../../widgets/app_avatar.dart';
 import '../../widgets/app_button.dart';
 import '../../widgets/app_chip.dart';
-import '../../widgets/app_sheet.dart';
 import '../../widgets/app_snackbar.dart';
 import '../../widgets/app_text_field.dart';
-import '../../widgets/press_effect.dart';
+import 'profile_photo_picker.dart';
 
 /// Everything from setup, on one screen, with a Save that only lights up when
 /// something has actually changed.
@@ -101,48 +99,6 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     }
   }
 
-  Future<void> _pickAvatar() async {
-    final String? picked = await AppSheet.show<String>(
-      context,
-      builder: (BuildContext sheetContext) => AppSheet(
-        title: 'Choose a photo',
-        subtitle: 'Uploads land in a later release.',
-        child: GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: StockPortraits.options.length,
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 4,
-            mainAxisSpacing: AppSpacing.md,
-            crossAxisSpacing: AppSpacing.md,
-          ),
-          itemBuilder: (BuildContext context, int index) {
-            final String url = StockPortraits.options[index];
-            return PressEffect(
-              onTap: () => Navigator.of(sheetContext).pop(url),
-              scale: 0.92,
-              child: ClipRRect(
-                borderRadius: AppRadii.smAll,
-                child: Image.network(
-                  url,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(color: sheetContext.colors.surfaceSunken),
-                ),
-              ),
-            );
-          },
-        ),
-      ),
-    );
-
-    if (picked != null && mounted) {
-      setState(() {
-        _avatarUrl = picked;
-        _isDirty = true;
-      });
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final AppColors colors = context.colors;
@@ -190,37 +146,13 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
         keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         children: <Widget>[
           Center(
-            child: PressEffect(
-              onTap: _pickAvatar,
-              scale: 0.94,
-              child: Stack(
-                children: <Widget>[
-                  AppAvatar(
-                    name: _name.text.isEmpty ? 'You' : _name.text,
-                    imageUrl: _avatarUrl,
-                    size: 96,
-                    ring: colors.primary,
-                  ),
-                  Positioned(
-                    right: 0,
-                    bottom: 0,
-                    child: Container(
-                      height: 30,
-                      width: 30,
-                      decoration: BoxDecoration(
-                        color: colors.primary,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: colors.canvas, width: 2),
-                      ),
-                      child: Icon(
-                        Icons.camera_alt_outlined,
-                        size: 14,
-                        color: colors.onPrimary,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+            child: ProfilePhotoPicker(
+              name: _name.text,
+              imageUrl: _avatarUrl,
+              onUploaded: (String url) => setState(() {
+                _avatarUrl = url;
+                _isDirty = true;
+              }),
             ),
           ),
           const SizedBox(height: AppSpacing.xxxl),

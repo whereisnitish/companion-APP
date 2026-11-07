@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { ok, parse } from '../../common/http';
+import { photoUploadRoutes } from '../media/media.routes';
 import { createProfileSchema, updateProfileSchema } from './profiles.schema';
 import * as service from './profiles.service';
 
@@ -14,6 +15,8 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
 
 export async function userRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', app.authenticate);
+
+  await app.register(photoUploadRoutes);
 
   app.get('/me', async (request) => ok(await service.getMe(request.userId)));
 

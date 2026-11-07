@@ -10,7 +10,7 @@ RUN npm ci
 COPY prisma ./prisma
 RUN npx prisma generate
 
-COPY tsconfig.json ./
+COPY tsconfig.json tsconfig.build.json ./
 COPY src ./src
 RUN npm run build
 
@@ -33,4 +33,5 @@ COPY prisma ./prisma
 USER node
 
 EXPOSE 4000
-CMD ["node", "dist/server.js"]
+# Apply migrations before serving, so a new deploy or a fresh database just works.
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/server.js"]

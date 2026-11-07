@@ -25,8 +25,9 @@ abstract final class AppConfig {
     return '$base/ws';
   }
 
-  static const Duration connectTimeout = Duration(seconds: 12);
-  static const Duration receiveTimeout = Duration(seconds: 20);
+  // Generous because a free host sleeps when idle and takes about a minute to wake.
+  static const Duration connectTimeout = Duration(seconds: 30);
+  static const Duration receiveTimeout = Duration(seconds: 90);
 
   static const String appName = 'Companion';
   static const String supportEmail = 'safety@companion.app';

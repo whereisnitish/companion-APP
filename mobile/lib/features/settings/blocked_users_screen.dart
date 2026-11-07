@@ -16,7 +16,8 @@ import '../../widgets/skeletons.dart';
 import '../../widgets/state_views.dart';
 import 'settings_widgets.dart';
 
-final FutureProvider<List<BlockedUser>> _blockedUsersProvider = FutureProvider<List<BlockedUser>>(
+final AutoDisposeFutureProvider<List<BlockedUser>> _blockedUsersProvider =
+    FutureProvider.autoDispose<List<BlockedUser>>(
   (Ref ref) => ref.watch(safetyServiceProvider).listBlocked(),
 );
 

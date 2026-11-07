@@ -1,10 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../../database/prisma';
-import { env } from '../../config/env';
+import { env, isProduction } from '../../config/env';
 import { hashPassword, verifyPassword } from '../../utils/password';
 import { generateOpaqueToken, hashToken } from '../../utils/tokens';
 import { addDays } from '../../utils/dates';
-import { conflict, notFound, unauthorized } from '../../common/errors';
+import { AppError, conflict, notFound, unauthorized } from '../../common/errors';
 import { serializeMe, userWithProfileInclude, type MeDto } from '../../common/serializers';
 import type { LoginInput, RegisterInput } from './auth.schema';
 
@@ -114,11 +114,20 @@ export async function logout(token: string): Promise<void> {
  */
 export const DEV_OTP_CODE = '123456';
 
-export async function requestOtp(phone: string): Promise<{ sent: true; devCode?: string }> {
-  return env.NODE_ENV === 'production' ? { sent: true } : { sent: true, devCode: DEV_OTP_CODE };
+/** With a fixed code, anyone who knows a phone number could sign in as its owner. */
+function assertOtpAvailable(): void {
+  if (isProduction) {
+    throw new AppError(503, 'OTP_UNAVAILABLE', 'Phone sign-in is not available yet.');
+  }
+}
+
+export async function requestOtp(_phone: string): Promise<{ sent: true; devCode: string }> {
+  assertOtpAvailable();
+  return { sent: true, devCode: DEV_OTP_CODE };
 }
 
 export async function verifyOtp(app: FastifyInstance, phone: string, code: string): Promise<AuthSession> {
+  assertOtpAvailable();
   if (code !== DEV_OTP_CODE) throw unauthorized('That code is not correct.');
   const user = await prisma.user.findUnique({ where: { phone }, select: { id: true } });
   if (!user) throw notFound('Account');

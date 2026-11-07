@@ -16,6 +16,7 @@ import {
   type PublicProfileDto,
 } from '../../common/serializers';
 import { realtime } from '../realtime/hub';
+import { connectedOrInvitedUserIds } from '../invitations/invitations.service';
 import { getBlockedUserIds } from '../safety/safety.service';
 import type { DiscoverActivitiesQuery, DiscoverPeopleQuery } from './discovery.schema';
 
@@ -110,13 +111,17 @@ export async function discoverPeople(
   }
 
   const viewer = await loadViewer(userId);
-  const blockedIds = await getBlockedUserIds(userId);
+  const [blockedIds, knownIds] = await Promise.all([
+    getBlockedUserIds(userId),
+    // Discovery is for meeting someone new, not people already in your invitations or chats.
+    connectedOrInvitedUserIds(userId),
+  ]);
   const box = boundingBox(viewer, query.radiusKm);
 
   const where: Prisma.ProfileWhereInput = {
     isDiscoverable: true,
     isComplete: true,
-    userId: { notIn: [userId, ...blockedIds] },
+    userId: { notIn: [userId, ...blockedIds, ...knownIds] },
     latitude: { gte: box.minLat, lte: box.maxLat },
     longitude: { gte: box.minLon, lte: box.maxLon },
     birthDate: { gte: birthDateForAge(query.maxAge + 1), lte: birthDateForAge(query.minAge) },

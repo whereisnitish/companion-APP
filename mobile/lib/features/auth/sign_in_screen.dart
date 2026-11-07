@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -143,8 +144,11 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
           isLoading: _isSubmitting,
           onPressed: _submit,
         ),
-        const SizedBox(height: AppSpacing.xxl),
-        const _DemoAccountHint(),
+        // Development only: real builds have no demo account to sign in to.
+        if (kDebugMode) ...<Widget>[
+          const SizedBox(height: AppSpacing.xxl),
+          const _DemoAccountHint(),
+        ],
       ],
     );
   }

@@ -10,6 +10,7 @@ import {
 } from '../../common/serializers';
 import { distanceKm, roundDistance } from '../../common/geo';
 import { realtime } from '../realtime/hub';
+import { connectionBetween, type PersonConnection } from '../invitations/invitations.service';
 import { isBlockedBetween } from '../safety/safety.service';
 import type { CreateProfileInput, UpdateProfileInput } from './profiles.schema';
 
@@ -144,15 +145,19 @@ export async function updateProfile(userId: string, input: UpdateProfileInput): 
   return getMe(userId);
 }
 
-export async function getPublicProfile(viewerId: string, targetId: string): Promise<PublicProfileDto> {
+export async function getPublicProfile(
+  viewerId: string,
+  targetId: string,
+): Promise<PublicProfileDto & { connection: PersonConnection | null }> {
   if (await isBlockedBetween(viewerId, targetId)) throw notFound('Profile');
 
-  const [target, viewer] = await Promise.all([
+  const [target, viewer, connection] = await Promise.all([
     prisma.user.findUnique({ where: { id: targetId }, include: userWithProfileInclude }),
     prisma.profile.findUnique({
       where: { userId: viewerId },
       select: { latitude: true, longitude: true },
     }),
+    connectionBetween(viewerId, targetId),
   ]);
 
   if (!target || !target.profile) throw notFound('Profile');
@@ -167,10 +172,13 @@ export async function getPublicProfile(viewerId: string, targetId: string): Prom
         )
       : null;
 
-  return serializePublicProfile(target, {
-    distanceKm: distance,
-    isOnline: realtime.isOnline(targetId),
-  });
+  return {
+    ...serializePublicProfile(target, {
+      distanceKm: distance,
+      isOnline: realtime.isOnline(targetId),
+    }),
+    connection,
+  };
 }
 
 export async function touchLastActive(userId: string): Promise<void> {

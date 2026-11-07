@@ -61,6 +61,7 @@ Discovery uses page numbers instead: `?page=1&limit=20` →
 | `ACCOUNT_EXISTS` | 409 | Registration collided with an existing account. |
 | `ALREADY_EXISTS` | 409 | Unique constraint violated. |
 | `INVITATION_PENDING` | 409 | A live invitation already exists for that pair. |
+| `ALREADY_CONNECTED` | 409 | You already have a chat with this person. |
 | `INVITATION_SETTLED` | 409 | The invitation has already been answered. |
 | `ACTIVITY_CLOSED` | 409 | The plan is no longer open. |
 | `ALREADY_BLOCKED` | 409 | You have already blocked this person. |
@@ -243,11 +244,35 @@ Partial update — every field of the create body is optional, plus
 `isDiscoverable`, `showDistance`, `showAge`. **Omitting a field leaves it
 alone**; it is never cleared by omission. Returns **Me**.
 
+### `POST /api/users/me/photo` → `201`
+
+The raw image is the request body, with `Content-Type: image/jpeg`, `image/png`
+or `image/webp`. The limit is 5 MB, and 20 uploads a minute.
+
+```jsonc
+{ "data": { "url": "https://…/media/photos/clx…" } }
+```
+
+The photo becomes the person's picture once that URL is saved as `avatarUrl`.
+Each new upload removes older photos, except the one the profile is using.
+
+Errors: `413 TOO_LARGE`, `415 UNSUPPORTED_MEDIA_TYPE` (wrong header),
+`415 UNSUPPORTED_IMAGE` (the file's contents are not one of those types).
+
+### `GET /media/photos/:id` → `200`
+
+The image itself. Needs no session, and is safe to cache permanently.
+
 ### `GET /api/users/:id` → `200`
 
 A public profile (same shape as Me, minus the owner-only fields). `distanceKm`
 is computed from the viewer's own coordinates and is `null` when the target has
 `showDistance` off; `age` is `null` when they have `showAge` off.
+
+`connection` says how the viewer stands with them: `null`,
+`{ "status": "INVITED_BY_ME" }`, `{ "status": "INVITED_ME" }` or
+`{ "status": "CONNECTED", "conversationId": "clx…" }`. Anyone with a live
+invitation or chat is also left out of `GET /api/discover/people`.
 
 Errors: `404 NOT_FOUND` — also returned when either party has blocked the
 other, so a block is indistinguishable from a deleted account.

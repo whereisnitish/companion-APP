@@ -312,19 +312,23 @@ class _InvitationCardState extends ConsumerState<InvitationCard> {
     try {
       final Invitation updated = await ref.read(invitationServiceProvider).accept(invitation.id);
       if (!mounted) return;
+
+      // Refreshing moves this invitation to "Earlier", which unmounts this card
+      // while the sheet is open, so the sheet cannot rely on this card's context.
+      final GoRouter router = GoRouter.of(context);
       invalidateSocialGraphFrom(ref);
 
       final String? conversationId = updated.conversationId;
       await AppSheet.show<void>(
         context,
         isDismissible: false,
-        builder: (_) => _ConnectedSheet(
+        builder: (BuildContext sheetContext) => _ConnectedSheet(
           invitation: updated,
           onOpenChat: conversationId == null
               ? null
               : () {
-                  Navigator.of(context).pop();
-                  context.push(Routes.chat(conversationId));
+                  Navigator.of(sheetContext).pop();
+                  router.push(Routes.chat(conversationId));
                 },
         ),
       );

@@ -1,0 +1,17 @@
+# Render Blueprint for the API. The database lives on Neon, so its connection
+# string is entered in Render's dashboard and never stored in this repository.
+services:
+  - type: web
+    name: companion-api
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true

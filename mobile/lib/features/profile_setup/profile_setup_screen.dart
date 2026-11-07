@@ -12,13 +12,13 @@ import '../../services/profile_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../../theme/app_typography.dart';
-import '../../widgets/app_avatar.dart';
 import '../../widgets/app_button.dart';
 import '../../widgets/app_chip.dart';
 import '../../widgets/app_snackbar.dart';
 import '../../widgets/app_text_field.dart';
 import '../../widgets/entrance.dart';
 import '../../widgets/press_effect.dart';
+import '../profile/profile_photo_picker.dart';
 
 /// Profile setup as a conversation, not a form.
 ///
@@ -146,7 +146,7 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
                     child: _PhotoStep(
                       name: _name.text,
                       selected: _draft.avatarUrl,
-                      onSelected: (String? url) =>
+                      onSelected: (String url) =>
                           setState(() => _draft = _draft.copyWith(avatarUrl: url)),
                     ),
                   ),
@@ -446,65 +446,26 @@ class _PhotoStep extends StatelessWidget {
 
   final String name;
   final String? selected;
-  final ValueChanged<String?> onSelected;
+  final ValueChanged<String> onSelected;
 
   @override
   Widget build(BuildContext context) {
-    final AppColors colors = context.colors;
-
     return Column(
       children: <Widget>[
         Center(
-          child: AppAvatar(
-            name: name.isEmpty ? 'You' : name,
+          child: ProfilePhotoPicker(
+            name: name,
             imageUrl: selected,
             size: 116,
-            ring: colors.primary,
+            showButton: true,
+            onUploaded: onSelected,
           ),
-        ),
-        const SizedBox(height: AppSpacing.xxxl),
-        GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: StockPortraits.options.length,
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 4,
-            mainAxisSpacing: AppSpacing.md,
-            crossAxisSpacing: AppSpacing.md,
-          ),
-          itemBuilder: (BuildContext context, int index) {
-            final String url = StockPortraits.options[index];
-            final bool isSelected = selected == url;
-            return PressEffect(
-              onTap: () => onSelected(isSelected ? null : url),
-              scale: 0.92,
-              child: AnimatedContainer(
-                duration: AppMotion.fast,
-                decoration: BoxDecoration(
-                  borderRadius: AppRadii.mdAll,
-                  border: Border.all(
-                    color: isSelected ? colors.primary : colors.border,
-                    width: isSelected ? 2 : 1,
-                  ),
-                ),
-                padding: const EdgeInsets.all(2),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(AppRadii.sm),
-                  child: Image.network(
-                    url,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Container(color: colors.surfaceSunken),
-                  ),
-                ),
-              ),
-            );
-          },
         ),
         const SizedBox(height: AppSpacing.xl),
         Text(
-          'Photo uploads arrive with the next release — for now, pick one of these or skip. You can change it any time from your profile.',
+          'Choose one from your gallery or take one now, or skip for the moment. You can change it any time from your profile.',
           textAlign: TextAlign.center,
-          style: context.type.caption.copyWith(color: colors.inkFaint, height: 1.5),
+          style: context.type.caption.copyWith(color: context.colors.inkFaint, height: 1.5),
         ),
       ],
     );
@@ -561,7 +522,7 @@ class _PlaceStepState extends State<_PlaceStep> {
         if (results.isEmpty) ...<Widget>[
           const SizedBox(height: AppSpacing.lg),
           Text(
-            'No match. The MVP covers ${Places.all.length} Bengaluru neighbourhoods.',
+            'No match. The MVP covers ${Places.all.length} Chandigarh neighbourhoods.',
             style: context.type.bodySmall.copyWith(color: context.colors.inkMuted),
           ),
         ],

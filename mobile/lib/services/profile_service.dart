@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import '../core/network/api_client.dart';
 import '../models/enums.dart';
 import '../models/profile.dart';
@@ -10,7 +12,7 @@ class ProfileDraft {
     this.gender,
     this.bio = '',
     this.occupation,
-    this.city = 'Bengaluru',
+    this.city = 'Chandigarh',
     this.area,
     this.latitude,
     this.longitude,
@@ -108,6 +110,14 @@ class ProfileService {
   Future<CurrentUser> updateProfile(Map<String, dynamic> patch) async {
     final Map<String, dynamic> response = await _client.put('/users/me', body: patch);
     return CurrentUser.fromJson(response.dataObject);
+  }
+
+  /// Uploads a picture and returns its URL. Saving that URL on the profile is
+  /// what makes it the person's photo.
+  Future<String> uploadPhoto(Uint8List bytes, {required String contentType}) async {
+    final Map<String, dynamic> response =
+        await _client.postBytes('/users/me/photo', bytes, contentType: contentType);
+    return response.dataObject['url'] as String;
   }
 
   Future<Profile> fetchProfile(String userId) async {

@@ -38,7 +38,18 @@ class SocketClient {
   int _attempt = 0;
   bool _disposed = false;
 
+  /// Called when the server refuses the token, so it can be refreshed.
+  VoidCallback? onUnauthorized;
+
+  /// The server's close code for a missing, invalid or expired token.
+  static const int _closeUnauthorized = 4401;
+
   bool get isConnected => _channel != null;
+
+  /// Reconnects use this token, so a dropped socket survives token expiry.
+  void updateToken(String accessToken) {
+    if (_token != null) _token = accessToken;
+  }
 
   void connect(String accessToken) {
     if (_disposed) return;
@@ -72,7 +83,10 @@ class SocketClient {
           }
         },
         onError: (Object _) => _scheduleReconnect(),
-        onDone: _scheduleReconnect,
+        onDone: () {
+          if (channel.closeCode == _closeUnauthorized) onUnauthorized?.call();
+          _scheduleReconnect();
+        },
         cancelOnError: true,
       );
     } catch (error) {

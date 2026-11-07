@@ -28,7 +28,13 @@ const req = (token?: string, body?: unknown) => ({
   ...(body === undefined ? {} : { payload: JSON.stringify(body) }),
 });
 
+/** Sessions are reused, so the suite stays under the auth routes' rate limit. */
+const sessions = new Map<string, { token: string; userId: string }>();
+
 async function signIn(email: string): Promise<{ token: string; userId: string }> {
+  const existing = sessions.get(email);
+  if (existing) return existing;
+
   const response = await app.inject({
     method: 'POST',
     url: '/api/auth/login',
@@ -36,7 +42,9 @@ async function signIn(email: string): Promise<{ token: string; userId: string }>
   });
   assert.equal(response.statusCode, 200, `login failed for ${email}: ${response.body}`);
   const body = response.json() as { data: { accessToken: string; user: { id: string } } };
-  return { token: body.data.accessToken, userId: body.data.user.id };
+  const session = { token: body.data.accessToken, userId: body.data.user.id };
+  sessions.set(email, session);
+  return session;
 }
 
 before(async () => {
@@ -148,7 +156,7 @@ describe('discovery', () => {
     const feed = (response.json() as { data: Record<string, unknown> }).data;
     assert.ok(Array.isArray(feed.peopleNearby) && (feed.peopleNearby as unknown[]).length > 0);
     assert.ok(Array.isArray(feed.activitiesNearby));
-    assert.equal(feed.city, 'Bengaluru');
+    assert.equal(feed.city, 'Chandigarh');
   });
 
   it('never includes the viewer in their own results', async () => {
@@ -224,10 +232,10 @@ describe('the core journey: post → invite → accept → chat', () => {
         description: 'A plan created by the test suite.',
         startsAt,
         locationName: 'PVR Forum Mall',
-        area: 'Koramangala',
-        city: 'Bengaluru',
-        latitude: 12.9345,
-        longitude: 77.6112,
+        area: 'Sector 35',
+        city: 'Chandigarh',
+        latitude: 30.7225,
+        longitude: 76.7610,
       }),
     });
     assert.equal(created.statusCode, 201, created.body);
@@ -371,10 +379,10 @@ describe('the core journey: post → invite → accept → chat', () => {
         category: 'WALK',
         title: 'Cancellation permission test',
         startsAt: new Date(Date.now() + 86_400_000).toISOString(),
-        locationName: 'Cubbon Park',
-        city: 'Bengaluru',
-        latitude: 12.9756,
-        longitude: 77.6068,
+        locationName: 'Rose Garden',
+        city: 'Chandigarh',
+        latitude: 30.7460,
+        longitude: 76.7880,
       }),
     });
     const activityId = (created.json() as { data: { id: string } }).data.id;
@@ -396,6 +404,175 @@ describe('the core journey: post → invite → accept → chat', () => {
 
     await prisma.activityParticipant.deleteMany({ where: { activityId } });
     await prisma.activity.deleteMany({ where: { id: activityId } });
+  });
+});
+
+describe('profile photos', () => {
+  const jpeg = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(2048, 7)]);
+
+  const upload = (token: string | undefined, payload: Buffer, type = 'image/jpeg') =>
+    app.inject({
+      method: 'POST',
+      url: '/api/users/me/photo',
+      headers: {
+        'content-type': type,
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+      },
+      payload,
+    });
+  const urlOf = (response: { json(): unknown }) =>
+    (response.json() as { data: { url: string } }).data.url;
+  const pathOf = (url: string) => new URL(url).pathname;
+
+  it('stores an upload, serves it publicly, and keeps only the photos in use', async () => {
+    const { token, userId } = await signIn('tara.nair@example.com');
+    const profile = await prisma.profile.findUniqueOrThrow({
+      where: { userId },
+      select: { avatarUrl: true },
+    });
+
+    try {
+      // Larger than the 1 MB limit on ordinary requests.
+      const large = Buffer.concat([jpeg, Buffer.alloc(2 * 1024 * 1024, 1)]);
+      const first = await upload(token, large);
+      assert.equal(first.statusCode, 201, first.body);
+
+      const served = await app.inject({ method: 'GET', url: pathOf(urlOf(first)) });
+      assert.equal(served.statusCode, 200);
+      assert.equal(served.headers['content-type'], 'image/jpeg');
+      assert.equal(served.headers['cross-origin-resource-policy'], 'cross-origin');
+      assert.ok(served.rawPayload.equals(large));
+
+      // The URL is accepted as a profile picture.
+      const saved = await app.inject({
+        method: 'PUT',
+        url: '/api/users/me',
+        ...req(token, { avatarUrl: urlOf(first) }),
+      });
+      assert.equal(saved.statusCode, 200, saved.body);
+
+      // An abandoned upload is cleared by the next one; the saved picture survives.
+      const abandoned = await upload(token, jpeg);
+      const latest = await upload(token, jpeg);
+      assert.equal((await app.inject({ method: 'GET', url: pathOf(urlOf(abandoned)) })).statusCode, 404);
+      assert.equal((await app.inject({ method: 'GET', url: pathOf(urlOf(first)) })).statusCode, 200);
+      assert.equal((await app.inject({ method: 'GET', url: pathOf(urlOf(latest)) })).statusCode, 200);
+    } finally {
+      await prisma.profile.update({ where: { userId }, data: { avatarUrl: profile.avatarUrl } });
+      await prisma.profilePhoto.deleteMany({ where: { userId } });
+    }
+  });
+
+  it('rejects anyone signed out, and anything that is not a real image', async () => {
+    const { token, userId } = await signIn('tara.nair@example.com');
+
+    assert.equal((await upload(undefined, jpeg)).statusCode, 401);
+
+    // Claiming to be a JPEG is not enough.
+    const fake = await upload(token, Buffer.from('<script>alert(1)</script>'));
+    assert.equal(fake.statusCode, 415);
+    assert.equal((fake.json() as { error: { code: string } }).error.code, 'UNSUPPORTED_IMAGE');
+
+    assert.equal((await upload(token, Buffer.from('hello'), 'text/plain')).statusCode, 415);
+    assert.equal((await upload(token, Buffer.from('hello'), 'application/pdf')).statusCode, 415);
+    assert.equal((await upload(token, Buffer.alloc(6 * 1024 * 1024, 1))).statusCode, 413);
+
+    assert.equal(await prisma.profilePhoto.count({ where: { userId } }), 0);
+  });
+});
+
+describe('discovery only suggests new people', () => {
+  it('hides anyone invited or connected, and brings back anyone who declined', async () => {
+    const started = new Date();
+    const a = await signIn('harsh.pandey@example.com');
+    const b = await signIn('rohan.iyer@example.com');
+    const pair = [
+      { senderId: a.userId, recipientId: b.userId },
+      { senderId: b.userId, recipientId: a.userId },
+    ];
+
+    const clean = async () => {
+      await prisma.conversation.deleteMany({ where: { invitation: { OR: pair } } });
+      await prisma.invitation.deleteMany({ where: { OR: pair } });
+      await prisma.notification.deleteMany({
+        where: { userId: { in: [a.userId, b.userId] }, createdAt: { gte: started } },
+      });
+    };
+    await clean();
+
+    const sees = async (viewer: { token: string }, target: { userId: string }) => {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/discover/people?limit=50&radiusKm=100',
+        ...req(viewer.token),
+      });
+      assert.equal(response.statusCode, 200, response.body);
+      return (response.json() as { data: Array<{ id: string }> }).data.some(
+        (person) => person.id === target.userId,
+      );
+    };
+    const connection = async (viewer: { token: string }, target: { userId: string }) => {
+      const response = await app.inject({
+        method: 'GET',
+        url: `/api/users/${target.userId}`,
+        ...req(viewer.token),
+      });
+      return (
+        response.json() as {
+          data: { connection: { status: string; conversationId?: string } | null };
+        }
+      ).data.connection;
+    };
+    const invite = (sender: { token: string }, recipient: { userId: string }) =>
+      app.inject({
+        method: 'POST',
+        url: '/api/invitations',
+        ...req(sender.token, { recipientId: recipient.userId, category: 'COFFEE', message: 'Hi' }),
+      });
+    const answer = (viewer: { token: string }, id: string, action: 'accept' | 'decline') =>
+      app.inject({ method: 'POST', url: `/api/invitations/${id}/${action}`, ...req(viewer.token) });
+
+    try {
+      assert.ok(await sees(a, b));
+      assert.equal(await connection(a, b), null);
+
+      // While it waits, neither person is suggested to the other.
+      const first = await invite(a, b);
+      assert.equal(first.statusCode, 201, first.body);
+      const firstId = (first.json() as { data: { id: string } }).data.id;
+      assert.ok(!(await sees(a, b)));
+      assert.ok(!(await sees(b, a)));
+      assert.equal((await connection(a, b))?.status, 'INVITED_BY_ME');
+      assert.equal((await connection(b, a))?.status, 'INVITED_ME');
+
+      // Someone already invited answers it rather than crossing it with their own.
+      const crossed = await invite(b, a);
+      assert.equal(crossed.statusCode, 409);
+      assert.equal((crossed.json() as { error: { code: string } }).error.code, 'INVITATION_PENDING');
+
+      // A decline brings them back.
+      assert.equal((await answer(b, firstId, 'decline')).statusCode, 200);
+      assert.ok(await sees(a, b));
+      assert.equal(await connection(a, b), null);
+
+      // Once connected they stay out of each other's discovery for good.
+      const second = await invite(a, b);
+      assert.equal(second.statusCode, 201, second.body);
+      const secondId = (second.json() as { data: { id: string } }).data.id;
+      assert.equal((await answer(b, secondId, 'accept')).statusCode, 200);
+      assert.ok(!(await sees(a, b)));
+      assert.ok(!(await sees(b, a)));
+
+      const connected = await connection(a, b);
+      assert.equal(connected?.status, 'CONNECTED');
+      assert.ok(connected?.conversationId);
+
+      const again = await invite(a, b);
+      assert.equal(again.statusCode, 409);
+      assert.equal((again.json() as { error: { code: string } }).error.code, 'ALREADY_CONNECTED');
+    } finally {
+      await clean();
+    }
   });
 });
 

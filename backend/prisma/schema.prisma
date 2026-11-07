@@ -115,9 +115,10 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  profile Profile?
+  profile       Profile?
+  profilePhotos ProfilePhoto[]
 
-  hostedActivities    Activity[]             @relation("ActivityHost")
+  hostedActivities   Activity[]             @relation("ActivityHost")
   participations      ActivityParticipant[]
   sentInvitations     Invitation[]           @relation("InvitationSender")
   receivedInvitations Invitation[]           @relation("InvitationRecipient")
@@ -188,6 +189,21 @@ model Profile {
   @@index([gender])
   @@index([birthDate])
   @@map("profiles")
+}
+
+/// An uploaded picture. Kept in the database because free hosts wipe their disk
+/// on restart; moving to object storage later only touches the media module.
+model ProfilePhoto {
+  id          String   @id @default(cuid())
+  userId      String
+  contentType String
+  data        Bytes
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("profile_photos")
 }
 
 model Interest {

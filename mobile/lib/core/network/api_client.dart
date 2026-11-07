@@ -30,6 +30,10 @@ class ApiClient {
     _dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (RequestOptions options, RequestInterceptorHandler handler) {
+          // The API rejects a JSON content type on an empty body, and actions
+          // such as accepting an invitation have nothing to send.
+          if (options.data == null) options.contentType = null;
+
           final String? token = _tokens.cachedAccessToken;
           if (token != null && !options.extra.containsKey('skipAuth')) {
             options.headers['authorization'] = 'Bearer $token';
@@ -52,6 +56,9 @@ class ApiClient {
   /// Invoked when a refresh fails — the session is gone and the app must sign out.
   VoidCallback? onSessionExpired;
 
+  /// Invoked with the new access token whenever the session is refreshed.
+  void Function(String accessToken)? onTokenRefreshed;
+
   Future<void>? _refreshInFlight;
 
   Future<Map<String, dynamic>> get(
@@ -73,6 +80,24 @@ class ApiClient {
           data: body,
           cancelToken: cancelToken,
           options: Options(extra: skipAuth ? <String, dynamic>{'skipAuth': true} : null),
+        ),
+      );
+
+  /// Sends raw bytes as the request body, such as an image.
+  Future<Map<String, dynamic>> postBytes(
+    String path,
+    Uint8List bytes, {
+    required String contentType,
+  }) =>
+      // Built inside the closure so a retry after a token refresh gets a fresh stream.
+      _send(
+        () => _dio.post<dynamic>(
+          path,
+          data: Stream<List<int>>.value(bytes),
+          options: Options(
+            contentType: contentType,
+            headers: <String, dynamic>{Headers.contentLengthHeader: bytes.length},
+          ),
         ),
       );
 
@@ -147,15 +172,19 @@ class ApiClient {
               refreshToken: session['refreshToken'] as String,
             ),
           );
+          onTokenRefreshed?.call(session['accessToken'] as String);
           return true;
         }
 
-        await _tokens.clear();
-        onSessionExpired?.call();
+        // Only the server saying the session is over ends it. A busy or limited
+        // server is temporary, and signing someone out would not help.
+        if (response.statusCode == 401) {
+          await _tokens.clear();
+          onSessionExpired?.call();
+        }
         return false;
       } catch (_) {
-        await _tokens.clear();
-        onSessionExpired?.call();
+        // No answer at all: offline, or the server still waking. Keep the session.
         return false;
       } finally {
         completer.complete();

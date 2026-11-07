@@ -253,7 +253,7 @@ npm run db:reset           # drop, migrate, seed
 
 ### Seed data
 
-31 fictional people across 16 Bengaluru neighbourhoods — different genders, ages
+31 fictional people across 16 Chandigarh neighbourhoods — different genders, ages
 (22–35), occupations, interests, preferred activities and availability — plus 26
 open plans spread over the next ten days, 24 invitations in every state, four
 live conversations with message history, and notifications. Portraits come from
@@ -471,11 +471,11 @@ Honest about the edges, and each one is a swap rather than a rewrite:
 
 | Stub | Where it lives | What replacing it takes |
 | --- | --- | --- |
-| **Photo upload** | Setup offers a curated portrait set; the field is already `avatarUrl` | An object store and a signed-upload endpoint; only the picker widget changes |
+| **Photo storage** | Profile pictures upload from the gallery or camera and live in Postgres, in the `media` module | An object store behind `media.service.ts`, once there are enough photos to justify one |
 | **OTP delivery** | `/auth/otp/*` returns a fixed dev code | An SMS provider call inside `auth.service.ts` |
 | **Push delivery** | Notifications are persisted and pushed over the WebSocket | APNs/FCM behind the existing `notify()` — no call site changes |
 | **Verification** | Badge, states and UI are real; nothing checks identity | A verification provider writing to `Profile.verification` |
-| **Geocoding** | 16 curated Bengaluru neighbourhoods with coordinates | A geocoder behind `Places`; distances already use real great-circle maths |
+| **Geocoding** | 16 curated Chandigarh neighbourhoods with coordinates | A geocoder behind `Places`; distances already use real great-circle maths |
 | **Notification preferences** | Switches are local to the device | A `/users/me/notification-preferences` endpoint |
 | **Ratings** | Stored, displayed, seeded — never written by the app | A post-meet-up rating flow |
 

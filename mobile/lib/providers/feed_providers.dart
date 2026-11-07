@@ -38,6 +38,12 @@ final StateProvider<DiscoveryFilters> discoveryFiltersProvider =
 
 final FutureProvider<List<Profile>> discoverPeopleProvider =
     FutureProvider<List<Profile>>((Ref ref) async {
+  // Anyone you are invited by or connected to drops out of this list.
+  ref.listen<AsyncValue<RealtimeEvent>>(realtimeEventsProvider,
+      (_, AsyncValue<RealtimeEvent> next) {
+    final String? type = next.valueOrNull?.type;
+    if (type == 'invitation:new' || type == 'invitation:updated') ref.invalidateSelf();
+  });
   final DiscoveryFilters filters = ref.watch(discoveryFiltersProvider);
   final PagedResult<Profile> page =
       await ref.watch(discoveryServiceProvider).discoverPeople(filters, limit: 30);
@@ -95,7 +101,10 @@ final FutureProvider<List<Conversation>> conversationsProvider =
   ref.listen<AsyncValue<RealtimeEvent>>(realtimeEventsProvider,
       (_, AsyncValue<RealtimeEvent> next) {
     final String? type = next.valueOrNull?.type;
-    if (type == 'message:new' || type == 'message:read') ref.invalidateSelf();
+    // An accepted invitation creates a conversation, so it refreshes the inbox too.
+    if (type == 'message:new' || type == 'message:read' || type == 'invitation:updated') {
+      ref.invalidateSelf();
+    }
   });
   return ref.watch(conversationServiceProvider).list();
 });
@@ -145,10 +154,32 @@ final FutureProviderFamily<Activity, String> activityByIdProvider =
   (Ref ref, String activityId) => ref.watch(activityServiceProvider).fetch(activityId),
 );
 
+/// Drops everything fetched for the previous account. Called on every sign-in:
+/// these providers stay alive across sign-out, so without this the next account
+/// is shown the last one's feed, inbox and profiles. Any new provider holding
+/// per-user data belongs here, or should be `autoDispose`.
+void resetUserScopedState(Ref ref) {
+  ref.invalidate(homeFeedProvider);
+  ref.invalidate(discoverModeProvider);
+  ref.invalidate(discoveryFiltersProvider);
+  ref.invalidate(discoverPeopleProvider);
+  ref.invalidate(discoverActivitiesProvider);
+  ref.invalidate(receivedInvitationsProvider);
+  ref.invalidate(sentInvitationsProvider);
+  ref.invalidate(invitationCountsProvider);
+  ref.invalidate(conversationsProvider);
+  ref.invalidate(notificationsProvider);
+  ref.invalidate(myActivitiesProvider);
+  ref.invalidate(profileByIdProvider);
+  ref.invalidate(activityByIdProvider);
+}
+
 /// Refreshes everything the shell shows after a mutation somewhere else —
 /// accepting an invitation touches the home feed, the invites list and the inbox.
 void invalidateSocialGraphFrom(WidgetRef ref) {
   ref.invalidate(homeFeedProvider);
+  ref.invalidate(discoverPeopleProvider);
+  ref.invalidate(profileByIdProvider);
   ref.invalidate(receivedInvitationsProvider);
   ref.invalidate(sentInvitationsProvider);
   ref.invalidate(invitationCountsProvider);

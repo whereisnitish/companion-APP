@@ -24,25 +24,25 @@ class Place {
 }
 
 abstract final class Places {
-  static const String defaultCity = 'Bengaluru';
+  static const String defaultCity = 'Chandigarh';
 
   static const List<Place> all = <Place>[
-    Place(name: 'Indiranagar', city: 'Bengaluru', latitude: 12.9784, longitude: 77.6408),
-    Place(name: 'Koramangala', city: 'Bengaluru', latitude: 12.9352, longitude: 77.6245),
-    Place(name: 'HSR Layout', city: 'Bengaluru', latitude: 12.9116, longitude: 77.6389),
-    Place(name: 'Jayanagar', city: 'Bengaluru', latitude: 12.9250, longitude: 77.5938),
-    Place(name: 'Whitefield', city: 'Bengaluru', latitude: 12.9698, longitude: 77.7500),
-    Place(name: 'MG Road', city: 'Bengaluru', latitude: 12.9756, longitude: 77.6068),
-    Place(name: 'Malleswaram', city: 'Bengaluru', latitude: 13.0035, longitude: 77.5647),
-    Place(name: 'JP Nagar', city: 'Bengaluru', latitude: 12.9063, longitude: 77.5857),
-    Place(name: 'Bellandur', city: 'Bengaluru', latitude: 12.9260, longitude: 77.6762),
-    Place(name: 'Ulsoor', city: 'Bengaluru', latitude: 12.9822, longitude: 77.6222),
-    Place(name: 'Domlur', city: 'Bengaluru', latitude: 12.9611, longitude: 77.6387),
-    Place(name: 'Basavanagudi', city: 'Bengaluru', latitude: 12.9422, longitude: 77.5738),
-    Place(name: 'Hebbal', city: 'Bengaluru', latitude: 13.0358, longitude: 77.5970),
-    Place(name: 'Frazer Town', city: 'Bengaluru', latitude: 13.0983, longitude: 77.6180),
-    Place(name: 'Rajajinagar', city: 'Bengaluru', latitude: 12.9982, longitude: 77.5525),
-    Place(name: 'Sarjapur Road', city: 'Bengaluru', latitude: 12.9010, longitude: 77.6874),
+    Place(name: 'Sector 17', city: 'Chandigarh', latitude: 30.7398, longitude: 76.7827),
+    Place(name: 'Sector 35', city: 'Chandigarh', latitude: 30.7225, longitude: 76.7610),
+    Place(name: 'Sector 22', city: 'Chandigarh', latitude: 30.7320, longitude: 76.7726),
+    Place(name: 'Sector 8', city: 'Chandigarh', latitude: 30.7440, longitude: 76.7960),
+    Place(name: 'Manimajra', city: 'Chandigarh', latitude: 30.7240, longitude: 76.8350),
+    Place(name: 'Sector 9', city: 'Chandigarh', latitude: 30.7460, longitude: 76.7880),
+    Place(name: 'Sector 11', city: 'Chandigarh', latitude: 30.7570, longitude: 76.7810),
+    Place(name: 'Sector 44', city: 'Chandigarh', latitude: 30.7140, longitude: 76.7590),
+    Place(name: 'Industrial Area', city: 'Chandigarh', latitude: 30.7056, longitude: 76.8013),
+    Place(name: 'Sector 7', city: 'Chandigarh', latitude: 30.7390, longitude: 76.7990),
+    Place(name: 'Sector 26', city: 'Chandigarh', latitude: 30.7273, longitude: 76.8094),
+    Place(name: 'Sector 15', city: 'Chandigarh', latitude: 30.7500, longitude: 76.7700),
+    Place(name: 'Sector 5', city: 'Chandigarh', latitude: 30.7560, longitude: 76.8020),
+    Place(name: 'Sector 32', city: 'Chandigarh', latitude: 30.7156, longitude: 76.7750),
+    Place(name: 'Sector 43', city: 'Chandigarh', latitude: 30.7194, longitude: 76.7497),
+    Place(name: 'IT Park', city: 'Chandigarh', latitude: 30.7270, longitude: 76.8490),
   ];
 
   static Place get fallback => all.first;
@@ -62,27 +62,4 @@ abstract final class Places {
         .where((Place place) => place.name.toLowerCase().contains(needle))
         .toList(growable: false);
   }
-}
-
-/// Portraits offered during profile setup.
-///
-/// Photo *upload* needs object storage, which is out of scope for the MVP, so
-/// the flow offers a curated set and accepts any image URL. The field on the
-/// profile is already `avatarUrl`, so wiring an uploader later changes only
-/// this picker.
-abstract final class StockPortraits {
-  static const List<String> options = <String>[
-    'https://randomuser.me/api/portraits/women/68.jpg',
-    'https://randomuser.me/api/portraits/men/32.jpg',
-    'https://randomuser.me/api/portraits/women/44.jpg',
-    'https://randomuser.me/api/portraits/men/75.jpg',
-    'https://randomuser.me/api/portraits/women/26.jpg',
-    'https://randomuser.me/api/portraits/men/12.jpg',
-    'https://randomuser.me/api/portraits/women/9.jpg',
-    'https://randomuser.me/api/portraits/men/45.jpg',
-    'https://randomuser.me/api/portraits/women/55.jpg',
-    'https://randomuser.me/api/portraits/men/64.jpg',
-    'https://randomuser.me/api/portraits/women/17.jpg',
-    'https://randomuser.me/api/portraits/men/83.jpg',
-  ];
 }

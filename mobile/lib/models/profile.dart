@@ -34,6 +34,28 @@ class Interest {
   int get hashCode => slug.hashCode;
 }
 
+enum ConnectionStatus { connected, invitedByMe, invitedMe }
+
+/// How the signed-in user stands with someone. Only sent on a full profile.
+class PersonConnection {
+  const PersonConnection({required this.status, this.conversationId});
+
+  final ConnectionStatus status;
+  final String? conversationId;
+
+  static PersonConnection? fromJson(Map<String, dynamic>? json) {
+    return switch (json?['status']) {
+      'CONNECTED' => PersonConnection(
+          status: ConnectionStatus.connected,
+          conversationId: _as<String>(json?['conversationId']),
+        ),
+      'INVITED_BY_ME' => const PersonConnection(status: ConnectionStatus.invitedByMe),
+      'INVITED_ME' => const PersonConnection(status: ConnectionStatus.invitedMe),
+      _ => null,
+    };
+  }
+}
+
 /// Somebody as everybody else sees them.
 class Profile {
   const Profile({
@@ -56,6 +78,7 @@ class Profile {
     required this.distanceKm,
     required this.isOnline,
     required this.lastActiveAt,
+    this.connection,
   });
 
   final String id;
@@ -77,6 +100,7 @@ class Profile {
   final double? distanceKm;
   final bool isOnline;
   final DateTime? lastActiveAt;
+  final PersonConnection? connection;
 
   /// The first name only — the interface addresses people, it does not file them.
   String get firstName => displayName.split(' ').first;
@@ -117,6 +141,7 @@ class Profile {
       distanceKm: json['distanceKm'] == null ? null : _asDouble(json['distanceKm']),
       isOnline: _as<bool>(json['isOnline']) ?? false,
       lastActiveAt: _asDate(json['lastActiveAt']),
+      connection: PersonConnection.fromJson(_as<Map<String, dynamic>>(json['connection'])),
     );
   }
 }

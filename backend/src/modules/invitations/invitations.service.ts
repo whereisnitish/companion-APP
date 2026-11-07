@@ -4,7 +4,7 @@ import { badRequest, conflict, forbidden, notFound, tooManyRequests } from '../.
 import { INVITATIONS, REDIS_KEYS } from '../../config/constants';
 import { buildPage, cursorArgs, type Page } from '../../common/pagination';
 import { addHours, dayKey } from '../../utils/dates';
-import { incrementCounter } from '../../database/redis';
+import { cacheDeleteByPrefix, incrementCounter } from '../../database/redis';
 import {
   invitationInclude,
   serializeInvitation,
@@ -25,6 +25,67 @@ async function expireStaleInvitations(userId: string): Promise<void> {
     },
     data: { status: 'EXPIRED', respondedAt: new Date() },
   });
+}
+
+/** An invitation that still ties two people together: waiting, or answered with a chat. */
+function liveInvitationWhere(): Prisma.InvitationWhereInput {
+  return {
+    OR: [
+      { status: 'PENDING', createdAt: { gte: addHours(new Date(), -INVITATIONS.expiryHours) } },
+      { status: 'ACCEPTED', conversation: { isNot: null } },
+    ],
+  };
+}
+
+/** Everyone discovery should stop suggesting to this person, in either direction. */
+export async function connectedOrInvitedUserIds(userId: string): Promise<string[]> {
+  const rows = await prisma.invitation.findMany({
+    where: {
+      AND: [{ OR: [{ senderId: userId }, { recipientId: userId }] }, liveInvitationWhere()],
+    },
+    select: { senderId: true, recipientId: true },
+  });
+  return [...new Set(rows.map((row) => (row.senderId === userId ? row.recipientId : row.senderId)))];
+}
+
+export type PersonConnection =
+  | { status: 'CONNECTED'; conversationId: string }
+  | { status: 'INVITED_BY_ME' }
+  | { status: 'INVITED_ME' };
+
+/** How the viewer stands with someone. A chat outranks any invitation still waiting. */
+export async function connectionBetween(
+  viewerId: string,
+  targetId: string,
+): Promise<PersonConnection | null> {
+  const rows = await prisma.invitation.findMany({
+    where: {
+      AND: [
+        {
+          OR: [
+            { senderId: viewerId, recipientId: targetId },
+            { senderId: targetId, recipientId: viewerId },
+          ],
+        },
+        liveInvitationWhere(),
+      ],
+    },
+    orderBy: { createdAt: 'desc' },
+    select: { senderId: true, conversation: { select: { id: true } } },
+  });
+
+  const connected = rows.find((row) => row.conversation);
+  if (connected?.conversation) {
+    return { status: 'CONNECTED', conversationId: connected.conversation.id };
+  }
+  const waiting = rows[0];
+  if (!waiting) return null;
+  return { status: waiting.senderId === viewerId ? 'INVITED_BY_ME' : 'INVITED_ME' };
+}
+
+/** Discovery caches each person's list, so a change here must clear both people's. */
+async function refreshDiscoveryFor(...userIds: string[]): Promise<void> {
+  await Promise.all(userIds.map((id) => cacheDeleteByPrefix(`discover:people:${id}:`)));
 }
 
 export async function createInvitation(
@@ -50,6 +111,18 @@ export async function createInvitation(
     });
     if (!activity) throw notFound('Activity');
     if (activity.status !== 'OPEN') throw conflict('That plan is no longer open.', 'ACTIVITY_CLOSED');
+  }
+
+  // A general invitation adds nothing to an open chat or to one already waiting
+  // on you. Asking to join a specific plan is still allowed.
+  if (!input.activityId) {
+    const connection = await connectionBetween(senderId, input.recipientId);
+    if (connection?.status === 'CONNECTED') {
+      throw conflict('You are already connected. Say hello in your chat.', 'ALREADY_CONNECTED');
+    }
+    if (connection?.status === 'INVITED_ME') {
+      throw conflict('They have already invited you. Check your invitations.', 'INVITATION_PENDING');
+    }
   }
 
   // One live invitation per pair per activity — no repeat-tapping the button.
@@ -86,6 +159,8 @@ export async function createInvitation(
     },
     include: invitationInclude,
   });
+
+  await refreshDiscoveryFor(senderId, input.recipientId);
 
   const dto = serializeInvitation(invitation, input.recipientId);
   const senderName = invitation.sender.profile?.displayName ?? 'Someone';
@@ -209,6 +284,8 @@ export async function acceptInvitation(userId: string, invitationId: string): Pr
     return conversation.id;
   });
 
+  await refreshDiscoveryFor(invitation.senderId, invitation.recipientId);
+
   const updated = await prisma.invitation.findUniqueOrThrow({
     where: { id: invitationId },
     include: invitationInclude,
@@ -248,6 +325,8 @@ export async function declineInvitation(userId: string, invitationId: string): P
     include: invitationInclude,
   });
 
+  await refreshDiscoveryFor(invitation.senderId, invitation.recipientId);
+
   // The sender is told the invitation was answered, never who declined what — kept low-key.
   await notify({
     userId: invitation.senderId,
@@ -269,7 +348,7 @@ export async function declineInvitation(userId: string, invitationId: string): P
 export async function cancelInvitation(userId: string, invitationId: string): Promise<InvitationDto> {
   const invitation = await prisma.invitation.findUnique({
     where: { id: invitationId },
-    select: { id: true, senderId: true, status: true },
+    select: { id: true, senderId: true, recipientId: true, status: true },
   });
   if (!invitation) throw notFound('Invitation');
   if (invitation.senderId !== userId) throw forbidden('Only the sender can withdraw this.');
@@ -282,6 +361,8 @@ export async function cancelInvitation(userId: string, invitationId: string): Pr
     data: { status: 'CANCELLED', respondedAt: new Date() },
     include: invitationInclude,
   });
+
+  await refreshDiscoveryFor(invitation.senderId, invitation.recipientId);
 
   return serializeInvitation(updated, userId);
 }

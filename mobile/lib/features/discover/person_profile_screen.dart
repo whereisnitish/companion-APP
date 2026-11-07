@@ -7,6 +7,7 @@ import '../../core/utils/formatters.dart';
 import '../../models/enums.dart';
 import '../../models/profile.dart';
 import '../../providers/feed_providers.dart';
+import '../../routing/app_router.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../../theme/app_typography.dart';
@@ -531,6 +532,35 @@ class _InviteBar extends StatelessWidget {
 
   final Profile person;
 
+  /// The one next step that makes sense given how you already stand with them.
+  Widget _action(BuildContext context) {
+    final PersonConnection? connection = person.connection;
+    final String? conversationId = connection?.conversationId;
+
+    return switch (connection?.status) {
+      ConnectionStatus.connected when conversationId != null => AppButton(
+          label: 'Open chat',
+          icon: Icons.chat_bubble_outline_rounded,
+          onPressed: () => context.push(Routes.chat(conversationId)),
+        ),
+      ConnectionStatus.invitedByMe => const AppButton(
+          label: 'Invitation sent',
+          icon: Icons.schedule_rounded,
+          onPressed: null,
+        ),
+      ConnectionStatus.invitedMe => AppButton(
+          label: 'Answer their invitation',
+          icon: Icons.mail_outline_rounded,
+          onPressed: () => context.go(Routes.invites),
+        ),
+      _ => AppButton(
+          label: 'Invite ${person.firstName}',
+          icon: Icons.send_rounded,
+          onPressed: () => showInviteSheet(context, profile: person),
+        ),
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     final AppColors colors = context.colors;
@@ -546,11 +576,7 @@ class _InviteBar extends StatelessWidget {
         color: colors.surface,
         border: Border(top: BorderSide(color: colors.border)),
       ),
-      child: AppButton(
-        label: 'Invite ${person.firstName}',
-        icon: Icons.send_rounded,
-        onPressed: () => showInviteSheet(context, profile: person),
-      ),
+      child: _action(context),
     );
   }
 }

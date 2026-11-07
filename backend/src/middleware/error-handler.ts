@@ -53,6 +53,14 @@ export function registerErrorHandler(app: FastifyInstance): void {
       return reply.code(429).send(body('RATE_LIMITED', 'Too many requests. Try again shortly.'));
     }
 
+    if (error.statusCode === 413) {
+      return reply.code(413).send(body('TOO_LARGE', 'That file is too large. Please try a smaller one.'));
+    }
+
+    if (error.statusCode === 415) {
+      return reply.code(415).send(body('UNSUPPORTED_MEDIA_TYPE', 'That file type is not supported.'));
+    }
+
     if (error.validation) {
       return reply.code(422).send(body('VALIDATION_ERROR', 'Some fields need attention.'));
     }

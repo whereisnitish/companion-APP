@@ -7,6 +7,7 @@ import '../core/realtime/socket_client.dart';
 import '../models/conversation.dart';
 import '../services/conversation_service.dart';
 import 'core_providers.dart';
+import 'feed_providers.dart';
 
 @immutable
 class ChatState {
@@ -68,6 +69,7 @@ class ChatController extends StateNotifier<ChatState> {
     state = state.copyWith(isLoading: true, clearError: true);
     try {
       final MessagePage page = await _service.messages(conversationId);
+      if (!mounted) return;
       _cursor = page.nextCursor;
       state = state.copyWith(
         messages: page.messages,
@@ -76,7 +78,7 @@ class ChatController extends StateNotifier<ChatState> {
       );
       unawaited(markRead());
     } catch (error) {
-      state = state.copyWith(isLoading: false, error: error);
+      if (mounted) state = state.copyWith(isLoading: false, error: error);
     }
   }
 
@@ -85,6 +87,7 @@ class ChatController extends StateNotifier<ChatState> {
     state = state.copyWith(isLoadingMore: true);
     try {
       final MessagePage page = await _service.messages(conversationId, cursor: _cursor);
+      if (!mounted) return;
       _cursor = page.nextCursor;
       state = state.copyWith(
         messages: <Message>[...state.messages, ...page.messages],
@@ -92,7 +95,7 @@ class ChatController extends StateNotifier<ChatState> {
         hasMore: page.nextCursor != null,
       );
     } catch (_) {
-      state = state.copyWith(isLoadingMore: false);
+      if (mounted) state = state.copyWith(isLoadingMore: false);
     }
   }
 
@@ -120,12 +123,14 @@ class ChatController extends StateNotifier<ChatState> {
 
     try {
       final Message saved = await _service.send(conversationId, trimmed);
+      if (!mounted) return;
       state = state.copyWith(
         messages: state.messages
             .map((Message message) => message.id == temporaryId ? saved : message)
             .toList(growable: false),
       );
     } catch (_) {
+      if (!mounted) return;
       state = state.copyWith(
         messages: state.messages
             .map(
@@ -147,11 +152,17 @@ class ChatController extends StateNotifier<ChatState> {
     await send(failed.body);
   }
 
+  /// Tells the server, then reloads the inbox so its unread badge clears. Held
+  /// alive throughout, because people often leave a chat before this finishes.
   Future<void> markRead() async {
+    final KeepAliveLink keepAlive = _ref.keepAlive();
     try {
       await _service.markRead(conversationId);
+      _ref.invalidate(conversationsProvider);
     } catch (_) {
       /* the badge will settle on the next fetch */
+    } finally {
+      keepAlive.close();
     }
   }
 
@@ -213,12 +224,15 @@ class ChatController extends StateNotifier<ChatState> {
   }
 }
 
-final StateNotifierProviderFamily<ChatController, ChatState, String> chatControllerProvider =
-    StateNotifierProvider.family<ChatController, ChatState, String>(
+// Both are dropped when the chat closes, so reopening one always shows the latest
+// messages for whoever is signed in, including any missed while the socket was down.
+final AutoDisposeStateNotifierProviderFamily<ChatController, ChatState, String>
+    chatControllerProvider =
+    StateNotifierProvider.autoDispose.family<ChatController, ChatState, String>(
   (Ref ref, String conversationId) => ChatController(ref, conversationId),
 );
 
-final FutureProviderFamily<Conversation, String> conversationByIdProvider =
-    FutureProvider.family<Conversation, String>(
+final AutoDisposeFutureProviderFamily<Conversation, String> conversationByIdProvider =
+    FutureProvider.autoDispose.family<Conversation, String>(
   (Ref ref, String conversationId) => ref.watch(conversationServiceProvider).fetch(conversationId),
 );

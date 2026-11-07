@@ -4,12 +4,15 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/network/api_client.dart';
+import '../core/network/api_exception.dart';
 import '../core/realtime/socket_client.dart';
 import '../core/storage/token_storage.dart';
 import '../models/profile.dart';
 import '../services/auth_service.dart';
 import '../services/profile_service.dart';
 import 'core_providers.dart';
+import 'feed_providers.dart';
 
 /// Where the app is in its lifecycle. The router reads exactly this.
 enum AuthStage {
@@ -50,13 +53,23 @@ class AuthState {
 
 class AuthController extends StateNotifier<AuthState> {
   AuthController(this._ref) : super(AuthState.loading) {
-    _ref.read(apiClientProvider).onSessionExpired = _onSessionExpired;
+    final ApiClient api = _ref.read(apiClientProvider);
+    api.onSessionExpired = _onSessionExpired;
+    // Access tokens last 15 minutes. Keep the socket's copy current, and when the
+    // server refuses it, make a request so the client refreshes the session.
+    api.onTokenRefreshed = _socket.updateToken;
+    _socket.onUnauthorized = () => unawaited(refreshUser());
     unawaited(restore());
   }
 
   final Ref _ref;
 
   static const String _onboardingSeenKey = 'companion.onboarding_seen';
+  static const int _restoreAttempts = 3;
+
+  /// How long to wait before trying to restore a session again.
+  @visibleForTesting
+  static Duration restoreRetryDelay = const Duration(seconds: 2);
 
   TokenStorage get _tokens => _ref.read(tokenStorageProvider);
   AuthService get _auth => _ref.read(authServiceProvider);
@@ -75,17 +88,32 @@ class AuthController extends StateNotifier<AuthState> {
       return;
     }
 
-    try {
-      final CurrentUser user = await _profiles.fetchMe();
-      _connectRealtime();
-      state = AuthState(
-        stage: user.isProfileComplete ? AuthStage.ready : AuthStage.needsProfile,
-        user: user,
-      );
-    } catch (_) {
-      await _tokens.clear();
-      state = AuthState(stage: _onboardingSeen ? AuthStage.signedOut : AuthStage.onboarding);
+    for (int attempt = 1; attempt <= _restoreAttempts; attempt += 1) {
+      try {
+        final CurrentUser user = await _profiles.fetchMe();
+        _connectRealtime();
+        state = AuthState(
+          stage: user.isProfileComplete ? AuthStage.ready : AuthStage.needsProfile,
+          user: user,
+        );
+        return;
+      } on ApiException catch (error) {
+        final bool isTemporary = error.isNetworkError || (error.statusCode ?? 0) >= 500;
+        if (!isTemporary) break;
+        if (attempt == _restoreAttempts) {
+          // Offline or the server is down. The session is still good, so keep it
+          // and the next launch signs straight back in.
+          state = AuthState(stage: _onboardingSeen ? AuthStage.signedOut : AuthStage.onboarding);
+          return;
+        }
+        await Future<void>.delayed(restoreRetryDelay);
+      } catch (_) {
+        break;
+      }
     }
+
+    await _tokens.clear();
+    state = AuthState(stage: _onboardingSeen ? AuthStage.signedOut : AuthStage.onboarding);
   }
 
   Future<void> completeOnboarding() async {
@@ -114,6 +142,7 @@ class AuthController extends StateNotifier<AuthState> {
   Future<void> _adopt(AuthSession session) async {
     await _tokens.save(session.tokens);
     await _prefs.setBool(_onboardingSeenKey, true);
+    resetUserScopedState(_ref);
     _connectRealtime();
     state = AuthState(
       stage: session.user.isProfileComplete ? AuthStage.ready : AuthStage.needsProfile,
